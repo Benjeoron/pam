@@ -2,34 +2,59 @@ import sys
 import getpass
 import pam_core
 
-
 def print_help():
     print("Usage: pam <option> <input>\noptions:\n",
           "init -- initializes a new instance of pam in the current working directory\n"
-          "add <usage> <username> -- adds a new password")
+          "add <service (optional)> <username (optional)> -- adds a new password")
+
+def initialize() -> None:
+    attempts = 0
+    while True:
+        master_pwd = getpass.getpass("Enter a master password: ")
+        if getpass.getpass("Re-enter the password to confirm: ") == master_pwd:
+            check = pam_core.check_cwd()
+            if check[1]:
+                while True:
+                    answer = input("Warning, there is already an instance of pam set up here. Do you wish to " \
+                    "overwrite the instance, deleting all of the stored passwords? [y/n] ")
+                    if answer.lower() == "y" or answer.lower() == "yes":
+                        break
+                    elif answer.lower() == "n" or answer.lower() == "no":
+                        return
+            pam_core.pam_init(master_pwd, check)
+            print("Pam initialized successfully.")
+            return
+        else:
+            print("The passwords did not match.")
+            attempts += 1
+            if (attempts > 3):
+                print("Initialization failed, please run pam init again.")
+                return
+
+def add() -> None:
+    master_pwd = getpass.getpass("Enter the master password: ")
+    valid_and_key = pam_core.pam_verify(master_pwd)
+    if not valid_and_key[0]:
+        print("Incorrect master password.")
+        return
+    service = sys.argv[2] if len(sys.argv) > 2 else input("Enter the use for this password: ")
+    username = sys.argv[3] if len(sys.argv) > 3 else input("Enter your username: ")
+    while True:
+        pwd = getpass.getpass("Enter a password: ")
+        if getpass.getpass("Re-enter the password to confirm: ") == pwd:
+            pam_core.pam_add(service, username, pwd, valid_and_key[1])
+            print("Password successfully added.")
+            return
+        else:
+            print("The passwords did not match.")
 
 if __name__ == "__main__":
     print (sys.argv)
     match sys.argv[1]:
         case "init":
-            matched = False
-            attempts = 0
-            while not matched and attempts < 3:
-                master_pwd = getpass.getpass("Enter a master password: ")
-                if getpass.getpass("Re-enter the password to confirm: ") == master_pwd:
-                    matched = True
-                else:
-                    print("Incorrect password.")
-                    attempts += 1
-            if not matched:
-                print("Initialization failed, please try again.")
-            else:
-                pam_core.pam_init(master_pwd)
+            initialize()
         case "add":
-            db = pam_core.pam_start()
-            service = sys.argv[2] if len(sys.argv) > 2 else input("Enter the use for this password: ")
-            username = sys.argv[3] if len(sys.argv) > 3 else input("Enter your username: ")
-            pwd = getpass.getpass("Enter your password: ")
+            add()
         case _:
             print(f"Command not found: {sys.argv[1]}")
             print_help()
