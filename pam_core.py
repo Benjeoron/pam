@@ -4,6 +4,7 @@ import sqlite3
 import Crypto.Cipher.AES as AES
 import secrets
 import base64
+import pyperclip
 
 def pam_verify(pwd : str) -> tuple[bool, str]:
     db = sqlite3.connect("./.pam/pam.db")
@@ -33,7 +34,7 @@ def pam_init(pwd : str, check : tuple[bool, bool]) -> None:
     db.commit()
     db.close()
 
-def pam_add(service : str, username : str, pwd : str, key : str) -> None:
+def pam_add(service : str, username : str, pwd : str) -> None:
     if not all(check for check in check_cwd()):
         print("Please initialize pam in this directory first by running \"py pam init\"")
         return
@@ -41,14 +42,25 @@ def pam_add(service : str, username : str, pwd : str, key : str) -> None:
     db = sqlite3.connect("./.pam/pam.db")
     cs = db.cursor()
     salt = secrets.token_bytes(32)
-    full_dek = argon2.PasswordHasher(hash_len=16).hash(password=key, salt=salt)
-    # cs.execute("INSERT INTO keys VALUES (?, ?, ?, ?, ?)", (service, username, dek, salt, 0))
+    full_dek = argon2.PasswordHasher(hash_len=16).hash(password=pwd, salt=salt)
     dek = base64.b64decode(full_dek.split("$")[5]+"==").hex()
     nonce = secrets.token_bytes(16)
     aes = AES.new(key=dek.encode(), mode=AES.MODE_GCM, nonce=nonce)
     enc = aes.encrypt(plaintext=pwd.encode())
-    print(enc)
-    # cs.execute("INSERT INTO passwords VALUES (?, ?, ?)", (service, username, enc))
-    # db.commit()
+    cs.execute("INSERT INTO keys VALUES (?, ?, ?, ?, ?)", (service, username, nonce, salt, 0))
+    cs.execute("INSERT INTO passwords VALUES (?, ?, ?)", (service, username, enc))
+    db.commit()
+
+def pam_get(service : str, username : str, pwd : str) -> list[str]:
+    db = sqlite3.connect("./.pam/pam.db")
+    cs = db.cursor()
+    cs.execute("SELECT hash, salt FROM keys WHERE service = ? AND username = ? AND is_master = 0", (service, username))
+    res = cs.fetchall()
+    ret = []
+    if res:
+        argon2.PasswordHasher(hash_len=16).hash(password=pwd, salt=ret[0][0])
+        dec = AES.new(key=
+    dek = base64.b64decode(full_dek.split("$")[5]+"==").hex())
+    return ret
 
 
